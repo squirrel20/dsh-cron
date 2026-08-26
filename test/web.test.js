@@ -21,7 +21,7 @@ function stubResponse() {
 const silentLogger = { info() {}, warn() {}, error() {} };
 
 /** A service double answering the two views the route reads. */
-function stubService(jobs, runs) {
+function stubService(jobs, runs, specs = {}) {
 	return {
 		domain: {},
 		listView: () => jobs,
@@ -29,6 +29,7 @@ function stubService(jobs, runs) {
 			assert.equal(jobName, undefined);
 			return runs.slice(0, limit);
 		},
+		manualSpecs: () => specs,
 	};
 }
 
@@ -36,12 +37,14 @@ test("state route path is namespaced under the plugin", () => {
 	assert.equal(STATE_PATH, "/dsh-cron/api/state");
 });
 
-test("cronWebState carries jobs, runs, and a clock", () => {
+test("cronWebState carries jobs, runs, manual specs, and a clock", () => {
 	const jobs = [{ name: "a", kind: "agent" }];
 	const runs = [{ job: "a", seq: 1 }];
-	const state = cronWebState(stubService(jobs, runs));
+	const specs = { a: { name: "a" } };
+	const state = cronWebState(stubService(jobs, runs, specs));
 	assert.deepEqual(state.jobs, jobs);
 	assert.deepEqual(state.runs, runs);
+	assert.deepEqual(state.specs, specs);
 	assert.ok(!Number.isNaN(Date.parse(state.now)));
 });
 

@@ -25,7 +25,7 @@ function stubTable() {
 }
 
 function stubDomain() {
-	const tables = { runs: stubTable(), jobs: stubTable() };
+	const tables = { runs: stubTable(), jobs: stubTable(), manual: stubTable() };
 	return { table: (name) => tables[name], close: async () => {} };
 }
 
@@ -120,4 +120,52 @@ test("runNow: manual run settles without touching lastFiredMs", async () => {
 	const state = service.domain.table("jobs").get("echo");
 	assert.equal(state.lastFiredMs, 123);
 	assert.equal(state.runSeq, 1);
+});
+
+test("updateJob: refuses unknown, config-declared, and renaming specs", async () => {
+	const service = await makeService([CRON_JOB]);
+	const missing = await service.updateJob("nope", CRON_JOB);
+	assert.equal(missing.code, "job_not_found");
+	const config = await service.updateJob("daily", CRON_JOB);
+	assert.equal(config.code, "config_job");
+	await service.addJob({ ...CMD_JOB, name: "manual-echo" });
+	const renamed = await service.updateJob("manual-echo", { ...CMD_JOB, name: "other" });
+	assert.equal(renamed.code, "invalid_job");
+	const invalid = await service.updateJob("manual-echo", { name: "manual-echo" });
+	assert.equal(invalid.code, "invalid_job");
+});
+
+test("updateJob: replaces a manual job's spec in place and raises the floor", async () => {
+	const service = await makeService([]);
+	await service.addJob({ ...CMD_JOB, name: "manual-echo" });
+	const before = service.floor.get("manual-echo");
+	const spec = {
+		name: "manual-echo",
+		schedule: { everySeconds: 120 },
+		task: { kind: "command", argv: ["echo", "bye"], timeoutSeconds: 60 },
+	};
+	const outcome = await service.updateJob("manual-echo", spec);
+	assert.equal(outcome.job.name, "manual-echo");
+	assert.equal(outcome.job.schedule, "every 120s");
+	assert.equal(outcome.job.source, "manual");
+	assert.ok(service.floor.get("manual-echo") >= before);
+	const stored = service.domain.table("manual").get("manual-echo");
+	assert.deepEqual(stored.spec, spec);
+	assert.ok(typeof stored.updatedAt === "string");
+});
+
+test("updateJob: a run in flight is refused", async () => {
+	const service = await makeService([]);
+	await service.addJob({ ...CMD_JOB, name: "manual-echo" });
+	service.running.set("manual-echo", { control: { cancel() {} } });
+	const outcome = await service.updateJob("manual-echo", { ...CMD_JOB, name: "manual-echo" });
+	assert.equal(outcome.code, "already_running");
+});
+
+test("manualSpecs: only manual jobs, raw specs as stored", async () => {
+	const service = await makeService([CRON_JOB]);
+	assert.deepEqual(service.manualSpecs(), {});
+	const spec = { ...CMD_JOB, name: "manual-echo" };
+	await service.addJob(spec);
+	assert.deepEqual(service.manualSpecs(), { "manual-echo": spec });
 });
