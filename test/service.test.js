@@ -122,6 +122,49 @@ test("runNow: manual run settles without touching lastFiredMs", async () => {
 	assert.equal(state.runSeq, 1);
 });
 
+test("runNow: the running record is readable once the call resolves", async () => {
+	// The real storage-domain table only exposes a write after backend
+	// durability; a stub whose map updates synchronously would hide the
+	// race between runNow answering and the initial record commit.
+	const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
+	function slowTable() {
+		const map = new Map();
+		return {
+			get: (key) => map.get(key),
+			put: async (key, value) => {
+				await settle();
+				map.set(key, value);
+				return value;
+			},
+			update: async (key, fn) => {
+				await settle();
+				const next = fn(map.get(key));
+				map.set(key, next);
+				return next;
+			},
+			delete: async (key) => {
+				await settle();
+				map.delete(key);
+			},
+			keys: () => map.keys(),
+			entries: () => map.entries(),
+		};
+	}
+	const jobs = normalizeJobs([CMD_JOB]);
+	const service = new CronService(ctx, { historyLimit: 3, maxConcurrentRuns: 1 }, jobs, GC_OFF);
+	const tables = { runs: slowTable(), jobs: slowTable(), manual: slowTable() };
+	service.domain = { table: (name) => tables[name], close: async () => {} };
+	await tables.jobs.put("echo", { anchorMs: Date.now(), lastFiredMs: 0, runSeq: 0 });
+	service.floor.set("echo", Date.now());
+	const started = await service.runNow("echo");
+	assert.equal(started.started, true);
+	const records = service.runsView("echo", 10);
+	assert.equal(records.length, 1);
+	assert.equal(records[0].status, "running");
+	assert.equal(records[0].manual, true);
+	await service.running.get("echo")?.promise;
+});
+
 test("updateJob: refuses unknown, config-declared, and renaming specs", async () => {
 	const service = await makeService([CRON_JOB]);
 	const missing = await service.updateJob("nope", CRON_JOB);
