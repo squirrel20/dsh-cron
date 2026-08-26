@@ -1,0 +1,9 @@
+# dsh bundle patch: inserts the cron scheduler into a profile's layer stack.
+# Patches apply after every bundle layer, so this row lands after the storage
+# hub, domain form, and agent registry it injects. Declare jobs by overriding
+# this row's config in the profile's own cordis.patch.yml.
+- insert:
+    - id: dsh-cron
+      name: 'dsh-cron'
+      config:
+        jobs: []
