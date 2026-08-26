@@ -69,9 +69,18 @@ profile 的 `package.json`：
 ## 边界与已知限制
 
 - agent 任务的 prompt 带固定 `[CRON RUN]` framing，明示无人值守、禁止提问。
-- 一次性会话 dispose 后仍留在磁盘上供复查；本插件不做会话文件 GC。
-- 作业只来自插件 config（声明式）；对话式管理工具（`cron_list` / `cron_run_now` 等）留待后续版本。
+- 作业只来自插件 config（声明式）；对话式工具（`cron_list` / `cron_runs` / `cron_run_now` / `cron_enable` / `cron_disable`）只观察与拨动作业，不创建或删除。
+- Web overlay 只读：与工具读同一份视图，走一条 `GET` 路由，不拨动调度器。
 - `queue` 深度为 1：只保留最新一个被挤压的发生点。
+
+## Web overlay
+
+profile 含 `@deepseek-ai/dsh-web-app` 时，插件同时提供一个只读的侧栏 overlay：
+侧栏底部的时钟徽标展开面板，列出全部已声明作业（类别、调度、下次发生点、最近
+一次结果）；点作业行下钻其运行历史，失败运行可展开 summary 尾部、会话 id 与
+exit code。浏览器半侧是 `lib/client.js`（经 `exports["./client"]` 与
+`dsh.client` 包字段声明）；它轮询 `GET /dsh-cron/api/state`——该 exact 路由仅在
+`ctx.webServer` 存在时注册，headless profile 照常挂载（`lib/web.js`）。
 
 ## 测试
 

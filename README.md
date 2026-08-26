@@ -72,9 +72,21 @@ The `runs` table keeps the most recent `historyLimit` entries keyed by `<job>#<s
 ## Boundaries and known limitations
 
 - Agent task prompts carry a fixed `[CRON RUN]` framing that states the run is unattended and questions are forbidden.
-- One-shot sessions remain on disk after dispose for inspection; this plugin does not GC session files.
-- Jobs come from plugin config only (declarative); conversational management tools (`cron_list` / `cron_run_now`, …) are left for a future version.
+- Jobs come from plugin config only (declarative); the conversational tools (`cron_list` / `cron_runs` / `cron_run_now` / `cron_enable` / `cron_disable`) observe and steer them, never create or delete them.
+- The web overlay is read-only: it observes the same views as the tools over one `GET` route and steers nothing.
 - `queue` depth is 1: only the single latest squeezed-out occurrence is kept.
+
+## Web overlay
+
+When the profile includes `@deepseek-ai/dsh-web-app`, the plugin also ships a
+read-only sidebar overlay: a clock badge at the sidebar foot opens a panel
+listing every declared job (kind, schedule, next occurrence, latest outcome);
+a job row drills into its recent run history, and failed runs expand their
+summary tail, session id, and exit code. The browser half is
+`lib/client.js` (declared via `exports["./client"]` + the `dsh.client`
+package field); it polls `GET /dsh-cron/api/state` — an exact route
+registered on `ctx.webServer` only while a webserver is present, so headless
+profiles mount unchanged (`lib/web.js`).
 
 ## Tests
 
