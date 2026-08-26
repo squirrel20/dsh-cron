@@ -73,7 +73,6 @@ The `runs` table keeps the most recent `historyLimit` entries keyed by `<job>#<s
 
 - Agent task prompts carry a fixed `[CRON RUN]` framing that states the run is unattended and questions are forbidden.
 - Jobs come from plugin config only (declarative); the conversational tools (`cron_list` / `cron_runs` / `cron_run_now` / `cron_enable` / `cron_disable`) observe and steer them, never create or delete them.
-- Manual jobs can be created but not deleted from the overlay yet; to remove one, declare a config job with the same name (config wins and evicts the manual copy) or clear its `manual` table record with the host stopped.
 - `queue` depth is 1: only the single latest squeezed-out occurrence is kept.
 
 ## Web overlay
@@ -90,12 +89,14 @@ task, working directory with a browse dialog over the host's directory
 capability, timeout, overlap/misfire policy); created jobs persist in the
 storage domain's `manual` table, re-normalize on every boot, and show a
 "manual" chip beside config-declared jobs — a config job with the same name
-wins and evicts the manual copy.
+wins and evicts the manual copy. A manual job's drill-in view carries a
+two-click delete (trash, then confirm) that drops the job and its whole run
+ledger; config jobs and jobs with a run in flight are refused.
 
 The browser half is `lib/client.js` (declared via `exports["./client"]` +
 the `dsh.client` package field). The host half (`lib/web.js`) serves
-`GET /dsh-cron/api/state` plus three writes — `POST …/run-now`, `…/stop`,
-`…/jobs` — which demand `application/json` bodies so cross-site simple
+`GET /dsh-cron/api/state` plus four writes — `POST …/run-now`, `…/stop`,
+`…/jobs`, `…/delete` — which demand `application/json` bodies so cross-site simple
 requests die before dispatch; routes register on `ctx.webServer` only while
 a webserver is present, so headless profiles mount unchanged.
 

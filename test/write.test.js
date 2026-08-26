@@ -94,6 +94,32 @@ test("stopRun refuses unknown and idle jobs distinctly", () => {
 	assert.equal(service.stopRun("idle").code, "not_running");
 });
 
+test("deleteJob removes a manual job and its whole ledger", async () => {
+	const service = makeService([]);
+	await service.addJob(SPEC);
+	await service.domain.table("runs").put("manual-echo#0000000001", {
+		job: "manual-echo", seq: 1, target: "t", startedAt: "s", status: "ok", summary: "",
+	});
+	const outcome = await service.deleteJob("manual-echo");
+	assert.deepEqual(outcome, { job: "manual-echo", deleted: true });
+	assert.ok(!service.jobs.some((job) => job.name === "manual-echo"));
+	assert.equal(service.domain.table("manual").get("manual-echo"), undefined);
+	assert.equal(service.domain.table("jobs").get("manual-echo"), undefined);
+	assert.deepEqual([...service.domain.table("runs").keys()], []);
+	assert.equal(service.floor.get("manual-echo"), undefined);
+});
+
+test("deleteJob refuses config jobs, running jobs, and unknowns", async () => {
+	const service = makeService([{ name: "cfg", schedule: { everySeconds: 3600 }, task: { kind: "command", argv: ["/bin/true"] } }]);
+	assert.equal((await service.deleteJob("cfg")).code, "config_job");
+	assert.equal((await service.deleteJob("ghost")).code, "job_not_found");
+	await service.addJob(SPEC);
+	service.running.set("manual-echo", { control: createControl(), promise: Promise.resolve() });
+	assert.equal((await service.deleteJob("manual-echo")).code, "already_running");
+	service.running.delete("manual-echo");
+	assert.equal((await service.deleteJob("manual-echo")).deleted, true);
+});
+
 // --- action handler transport ---
 
 function stubResponse() {
@@ -129,6 +155,16 @@ function stubRequest(body, contentType = "application/json") {
 }
 
 const silentLogger = { info() {}, warn() {}, error() {} };
+
+test("delete route maps config_job to 409", async () => {
+	const service = makeService([{ name: "cfg", schedule: { everySeconds: 3600 }, task: { kind: "command", argv: ["/bin/true"] } }]);
+	const del = actionRoutes().find((route) => route.path.endsWith("/delete"));
+	const handler = createActionHandler(() => service, silentLogger, del.act);
+	const res = stubResponse();
+	await handler(stubRequest(JSON.stringify({ job: "cfg" })), res);
+	assert.equal(res.record.status, 409);
+	assert.equal(JSON.parse(res.record.body).error, "config_job");
+});
 
 test("action handler maps service error codes to HTTP statuses", async () => {
 	const service = makeService([]);
