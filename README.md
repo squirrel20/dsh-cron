@@ -71,7 +71,7 @@ The `runs` table keeps the most recent `historyLimit` entries keyed by `<job>#<s
 
 ## Boundaries and known limitations
 
-- Agent task prompts carry a fixed `[CRON RUN]` framing that states the run is unattended and questions are forbidden.
+- Agent runs carry a fixed `[CRON RUN]` framing that states the run is unattended and questions are forbidden. It is injected as a scoped system-prompt section, so the user message holds only the job's prompt; hosts without the system-prompt service fall back to prepending it to the message.
 - Jobs come from plugin config only (declarative); the conversational tools (`cron_list` / `cron_runs` / `cron_run_now` / `cron_enable` / `cron_disable`) observe and steer them, never create or delete them.
 - `queue` depth is 1: only the single latest squeezed-out occurrence is kept.
 

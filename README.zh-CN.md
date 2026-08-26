@@ -68,7 +68,7 @@ profile 的 `package.json`：
 
 ## 边界与已知限制
 
-- agent 任务的 prompt 带固定 `[CRON RUN]` framing，明示无人值守、禁止提问。
+- agent 运行带固定 `[CRON RUN]` framing，明示无人值守、禁止提问。framing 以 scoped system-prompt section 注入，用户消息只保留作业本身的 prompt；宿主缺少 system-prompt 服务时回退为拼进消息。
 - 作业只来自插件 config（声明式）；对话式工具（`cron_list` / `cron_runs` / `cron_run_now` / `cron_enable` / `cron_disable`）只观察与拨动作业，不创建或删除。
 - `queue` 深度为 1：只保留最新一个被挤压的发生点。
 
