@@ -27,16 +27,32 @@ DeepSeek Harness (dsh) 的无人值守定时任务插件：按 cron 表达式 / 
 
 ## 安装
 
+### 插件市场安装
+
+装有 [dsh-market](https://github.com/dsh-market/dsh-market) 时，打开 **设置 → 插件市场**，搜索 **dsh-cron** 一键安装——市场会同时写好依赖与 profile 的 bundle 声明，多数情况下刷新页面即生效。
+
+也可以用命令行直接装 release tarball（这只完成包安装，`dsh.profile.bundles` 里的 `"dsh-cron"` 需按下文自行补上）：
+
+```sh
+dsh plugin --profile web add https://github.com/squirrel20/dsh-cron/releases/latest/download/dsh-cron.tgz
+```
+
+> npm 上名为 `dsh-cron` 的包是另一个无关项目——请从插件市场或 release tarball 安装，不要走 npm registry。
+
+### 源码安装
+
 profile 的 `package.json`：
 
 ```jsonc
 {
-  "dependencies": { "dsh-cron": "link:/path/to/dsh-cron" },   // 或 npm/git 来源
+  "dependencies": { "dsh-cron": "link:/path/to/dsh-cron" },   // 或 git checkout / release tarball
   "dsh": { "profile": { "bundles": [ /* …既有 bundles… */, "dsh-cron" ] } }
 }
 ```
 
-然后在 profile 的 `cordis.patch.yml` 里覆盖 config 声明作业：
+### config 声明作业（可选）
+
+需要「常驻声明式」作业时，在 profile 的 `cordis.patch.yml` 里覆盖 config；也可以完全跳过这步，改用界面或会话内创建（见[使用](#使用)）：
 
 ```yaml
 - id: dsh-cron
@@ -61,6 +77,29 @@ profile 的 `package.json`：
 ```
 
 作业配置错误（重名、非法表达式、缺时区等）在挂载期 fail loud，不会静默吞掉。
+
+## 使用
+
+### 手工添加作业
+
+点侧栏 **Cron Jobs** section 标题上的 **`+`**，新建作业弹窗一屏配完：
+
+- **名称**——小写字母、数字与 `-`。
+- **触发**——`cron`（5 字段表达式 + IANA 时区）、`interval` 周期、`one-shot` 一次性。
+- **任务**——`agent`（prompt 无人值守走完整 dsh 工具链）或 `command`（spawn 一条 argv）。
+- **Preset / 权限 / 模型**——留空继承宿主默认。
+- **工作目录**——手输路径或点文件夹图标浏览选择。
+- **超时、重叠策略、错过策略**——语义见[能力](#能力)。
+
+**Create & enable** 落盘保存（「manual」标记与 config 声明的作业区分）。之后每行的 `⋯` 菜单提供 **立即运行 / 暂停调度 / 编辑 / 删除**；点行展开运行历史，点某次 agent 运行直接打开该次运行的完整会话回放。
+
+### 会话内添加作业
+
+在任意会话里直接对 agent 说需求即可：
+
+> 每周一早上 7 点检查过期依赖，把升级清单存到 reports/deps-audit.md。
+
+配套的 **cron-create** skill（宿主有 skill 注册表时自动注册）引导模型走 收集 → 确认 → 创建 → 验证 全流程，底层调用 `cron_create` 工具；`cron_delete` 同样可在会话中删除手动作业。会话里建出的作业就是普通 manual 作业——与网页弹窗写的是同一张表——立即出现在侧栏，之后也能在界面里编辑。读取/拨动类工具（`cron_list`、`cron_runs`、`cron_run_now`、`cron_enable`、`cron_disable`）对 config 声明的作业同样有效。
 
 ## 运行记录
 

@@ -27,16 +27,32 @@ Unattended scheduled-jobs plugin for DeepSeek Harness (dsh): run **agent tasks**
 
 ## Installation
 
+### From the Plugin Market
+
+With [dsh-market](https://github.com/dsh-market/dsh-market) installed, open **Settings → Plugin Market**, search **dsh-cron**, and install with one click — the market adds both the dependency and the profile bundle entry for you, and most installs go live after a page refresh.
+
+Or install the release tarball from the command line (this only runs the package install — add `"dsh-cron"` to `dsh.profile.bundles` yourself, as shown below):
+
+```sh
+dsh plugin --profile web add https://github.com/squirrel20/dsh-cron/releases/latest/download/dsh-cron.tgz
+```
+
+> The npm package named `dsh-cron` is an unrelated project — install from the market or the release tarball, not from the npm registry.
+
+### From source
+
 In your profile's `package.json`:
 
 ```jsonc
 {
-  "dependencies": { "dsh-cron": "link:/path/to/dsh-cron" },   // or an npm/git source
+  "dependencies": { "dsh-cron": "link:/path/to/dsh-cron" },   // or a git checkout / release tarball
   "dsh": { "profile": { "bundles": [ /* …existing bundles… */, "dsh-cron" ] } }
 }
 ```
 
-Then declare jobs by overriding the config in the profile's `cordis.patch.yml`:
+### Config-declared jobs (optional)
+
+Declare always-on jobs by overriding the config in the profile's `cordis.patch.yml` — or skip this entirely and create jobs from the UI or a session (see [Usage](#usage)):
 
 ```yaml
 - id: dsh-cron
@@ -58,12 +74,35 @@ Then declare jobs by overriding the config in the profile's `cordis.patch.yml`:
       - name: heartbeat
         schedule: { everySeconds: 3600 }
         task: { kind: command, argv: ["./scripts/heartbeat.sh"], cwd: /path/to/project }
-    sessionGc:            # 可省略；默认 enabled: true, graceMinutes: 30, root: ~/.dsh/sessions
+    sessionGc:            # optional; defaults: enabled: true, graceMinutes: 30, root: ~/.dsh/sessions
       enabled: true
       graceMinutes: 30
 ```
 
 Job misconfiguration (duplicate names, invalid expressions, missing time zone, …) fails loud at mount time — it is never swallowed silently.
+
+## Usage
+
+### Adding a job by hand
+
+Click **`+`** in the sidebar's **Cron Jobs** section header. The New job dialog configures everything on one screen:
+
+- **Name** — lowercase, digits and `-`.
+- **Trigger** — `cron` (5-field expression + IANA time zone), `interval`, or `one-shot`.
+- **Task** — `agent` (a prompt executed unattended through the full dsh toolchain) or `command` (an argv to spawn).
+- **Preset / Access / Model** — leave blank to inherit the host defaults.
+- **Working directory** — type a path or browse via the folder icon.
+- **Timeout, On overlap, On misfire** — see [Features](#features) for the policy semantics.
+
+**Create & enable** persists the job (a "manual" chip marks it apart from config-declared jobs). Afterwards, each row's `⋯` menu offers **Run now / Pause schedule / Edit job / Delete job**; clicking a row expands its run history, and clicking an agent run opens that run's full session replay.
+
+### Adding a job from a session
+
+Just ask the agent in any session:
+
+> Every Monday at 07:00 review our outdated dependencies and save an upgrade checklist to reports/deps-audit.md.
+
+The bundled **cron-create** skill (auto-registered when the host has a skill registry) walks the model through collect → confirm → create → verify, calling the `cron_create` tool under the hood; `cron_delete` removes a manual job the same way. Jobs created from a session are ordinary manual jobs — the exact same overlay the web dialog writes — so they show up in the sidebar immediately and can be edited there later. The read/steer tools (`cron_list`, `cron_runs`, `cron_run_now`, `cron_enable`, `cron_disable`) work on config-declared jobs too.
 
 ## Run records
 
