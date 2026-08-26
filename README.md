@@ -47,6 +47,9 @@ Then declare jobs by overriding the config in the profile's `cordis.patch.yml`:
       - name: heartbeat
         schedule: { everySeconds: 3600 }
         task: { kind: command, argv: ["./scripts/heartbeat.sh"], cwd: /path/to/project }
+    sessionGc:            # 可省略；默认 enabled: true, graceMinutes: 30, root: ~/.dsh/sessions
+      enabled: true
+      graceMinutes: 30
 ```
 
 Job misconfiguration (duplicate names, invalid expressions, missing time zone, …) fails loud at mount time — it is never swallowed silently.
