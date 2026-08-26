@@ -4,6 +4,17 @@ English | [简体中文](README.zh-CN.md)
 
 Unattended scheduled-jobs plugin for DeepSeek Harness (dsh): run **agent tasks** (spawn a one-shot agent to execute a prompt through the full dsh toolchain) or **command tasks** (run a script directly) on a cron expression, a fixed interval, or a one-time instant. Complementary to `@deepseek-ai/dsh-schedule` — that one is persistent in-session reminders, this one is a host-side job scheduler: jobs belong to no interactive session and fire automatically while the process is up.
 
+![Sidebar job list with expanded run history; clicking an agent run opens the full session replay](assets/demo-run-session.png)
+
+## UI
+
+- **Sidebar section**: status dot (last result) + next-trigger time, live elapsed timer while running; rows expand into run history, and clicking an agent run jumps straight to that run's full session.
+- **Create / edit modal**: trigger kind, task kind, mode / permission / model knobs (blank = inherit defaults), working directory, timeout, and overlap / misfire policies — all on one screen.
+
+| Create a job | Row actions |
+| --- | --- |
+| ![Create-job modal](assets/demo-new-job.png) | ![Run now / pause / edit / delete](assets/demo-row-menu.png) |
+
 ## Features
 
 - **Three trigger kinds**: `cron` (5-field expression + explicit IANA `timeZone`; the process time zone is never consulted), `everySeconds` (anchor-aligned interval, 60s minimum), `at` (one-time RFC 3339 instant; a Z or numeric offset is required).
