@@ -70,17 +70,26 @@ profile 的 `package.json`：
 
 - agent 任务的 prompt 带固定 `[CRON RUN]` framing，明示无人值守、禁止提问。
 - 作业只来自插件 config（声明式）；对话式工具（`cron_list` / `cron_runs` / `cron_run_now` / `cron_enable` / `cron_disable`）只观察与拨动作业，不创建或删除。
-- Web overlay 只读：与工具读同一份视图，走一条 `GET` 路由，不拨动调度器。
+- overlay 暂不支持删除手动作业；要移除，可在 config 声明同名作业（config 获胜并逐出手动副本），或停机后清掉 `manual` 表记录。
 - `queue` 深度为 1：只保留最新一个被挤压的发生点。
 
 ## Web overlay
 
-profile 含 `@deepseek-ai/dsh-web-app` 时，插件同时提供一个只读的侧栏 overlay：
-侧栏底部的时钟徽标展开面板，列出全部已声明作业（类别、调度、下次发生点、最近
-一次结果）；点作业行下钻其运行历史，失败运行可展开 summary 尾部、会话 id 与
-exit code。浏览器半侧是 `lib/client.js`（经 `exports["./client"]` 与
-`dsh.client` 包字段声明）；它轮询 `GET /dsh-cron/api/state`——该 exact 路由仅在
-`ctx.webServer` 存在时注册，headless profile 照常挂载（`lib/web.js`）。
+profile 含 `@deepseek-ai/dsh-web-app` 时，插件同时提供一个侧栏 overlay：侧栏底部
+的时钟徽标展开面板，列出全部作业（类别、调度、下次发生点、最近一次结果）；点作业
+行下钻其运行历史，失败运行可展开 summary 尾部、会话 id 与 exit code。行上悬停出
+两枚操作——未运行的行「立即运行」（同 `cron_run_now` 语义），运行中的行「停止」
+（该轮记录落 `killed`，后续排程不受影响）。面板 `+` 打开建单表单（名称、cron/周期/
+一次性触发、agent/command 任务、工作目录支持经宿主 browse 能力的目录弹窗选择、
+超时、overlap/misfire 策略）；建出的作业持久化在 storage domain 的 `manual` 表，
+每次启动重新归一化，与 config 声明的作业并列显示并带「手动」标记——同名 config
+作业获胜并逐出手动副本。
+
+浏览器半侧是 `lib/client.js`（经 `exports["./client"]` 与 `dsh.client` 包字段
+声明）。宿主半侧（`lib/web.js`）提供 `GET /dsh-cron/api/state` 与三条写路由——
+`POST …/run-now`、`…/stop`、`…/jobs`——写路由强制 `application/json` 请求体，
+跨站简单请求在分发前即被拒；路由仅在 `ctx.webServer` 存在时注册，headless
+profile 照常挂载。
 
 ## 测试
 
