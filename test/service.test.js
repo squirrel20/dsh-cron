@@ -169,3 +169,21 @@ test("manualSpecs: only manual jobs, raw specs as stored", async () => {
 	await service.addJob(spec);
 	assert.deepEqual(service.manualSpecs(), { "manual-echo": spec });
 });
+
+test("normalizeJobs: agent execution knobs default empty and pass through", () => {
+	const [bare] = normalizeJobs([CRON_JOB]);
+	assert.equal(bare.task.provider, "");
+	assert.equal(bare.task.model, "");
+	assert.equal(bare.task.effort, "");
+	assert.equal(bare.task.preset, "");
+	assert.equal(bare.task.access, "");
+	const [knobbed] = normalizeJobs([{
+		...CRON_JOB,
+		task: { ...CRON_JOB.task, provider: "spark", model: "v4-flash", effort: "max", preset: "standard", access: "workspace-write" },
+	}]);
+	assert.equal(knobbed.task.provider, "spark");
+	assert.equal(knobbed.task.model, "v4-flash");
+	assert.equal(knobbed.task.effort, "max");
+	assert.equal(knobbed.task.preset, "standard");
+	assert.equal(knobbed.task.access, "workspace-write");
+});

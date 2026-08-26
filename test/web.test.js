@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createStateHandler, cronWebState, STATE_PATH } from "../lib/web.js";
+import { createStateHandler, cronWebOptions, cronWebState, OPTIONS_PATH, STATE_PATH } from "../lib/web.js";
 
 /** Minimal response double capturing status, headers, and body. */
 function stubResponse() {
@@ -102,4 +102,72 @@ test("a view that throws answers 500 without leaking the error", () => {
 	handler({ method: "GET" }, res);
 	assert.equal(res.record.status, 500);
 	assert.deepEqual(JSON.parse(res.record.body), { error: "internal_error" });
+});
+
+test("options route path is namespaced under the plugin", () => {
+	assert.equal(OPTIONS_PATH, "/dsh-cron/api/options");
+});
+
+test("cronWebOptions degrades to empty lists without host services", async () => {
+	const options = await cronWebOptions({ get: () => undefined });
+	assert.deepEqual(options, { presets: [], access: [], models: [], defaults: {} });
+	const bare = await cronWebOptions({});
+	assert.deepEqual(bare, { presets: [], access: [], models: [], defaults: {} });
+});
+
+test("cronWebOptions assembles presets, access, and the model catalog", async () => {
+	const services = {
+		agentPresets: {
+			defaultId: "standard",
+			list: async () => [
+				{ id: "standard", name: "标准 + Claude Code", description: "full coding agent" },
+				{ id: "broken-one", broken: "unparsable" },
+				{ id: "bare" },
+			],
+		},
+		permissionPresets: {
+			names: ["workspace-write", "danger-full-access"],
+			presets: {
+				"workspace-write": { name: "Workspace Write", description: "write inside the workspace" },
+				"danger-full-access": { name: "Full Access" },
+			},
+			defaultSettings: () => ({ defaultPreset: "workspace-write" }),
+		},
+		llm: {
+			listProviders: () => [{ id: "spark", name: "Spark" }, { id: "flaky", name: "Flaky" }],
+			listModels: async (id) => {
+				if (id === "flaky") throw new Error("down");
+				return [{ id: "v4-flash", name: "DeepSeek V4 Flash (Spark)" }];
+			},
+			resolveModelInfo: async () => ({
+				reasoning: {
+					efforts: [{ id: "low", name: "Low" }, { id: "max", name: "Max" }],
+					defaultEffort: "max",
+				},
+			}),
+		},
+		agentDefaultModel: {
+			currentSelection: () => ({ provider: "spark", model: "v4-flash", reasoningEffort: "max" }),
+		},
+	};
+	const options = await cronWebOptions({ get: (name) => services[name] });
+	assert.deepEqual(options.presets, [
+		{ id: "standard", name: "标准 + Claude Code", description: "full coding agent" },
+		{ id: "bare", name: "bare" },
+	]);
+	assert.equal(options.defaults.preset, "standard");
+	assert.deepEqual(options.access, [
+		{ id: "workspace-write", name: "Workspace Write", description: "write inside the workspace" },
+		{ id: "danger-full-access", name: "Full Access" },
+	]);
+	assert.equal(options.defaults.access, "workspace-write");
+	assert.deepEqual(options.models, [{
+		provider: "spark",
+		providerName: "Spark",
+		id: "v4-flash",
+		name: "DeepSeek V4 Flash (Spark)",
+		efforts: [{ id: "low", name: "Low" }, { id: "max", name: "Max" }],
+		defaultEffort: "max",
+	}]);
+	assert.deepEqual(options.defaults.selection, { provider: "spark", model: "v4-flash", reasoningEffort: "max" });
 });
