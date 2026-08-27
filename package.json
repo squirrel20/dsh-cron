@@ -1,6 +1,6 @@
 {
   "name": "dsh-cron",
-  "version": "0.9.7",
+  "version": "0.9.8",
   "description": "Unattended scheduled jobs for the DeepSeek Harness: agent/command tasks on cron schedules, durable dispatch state, bounded run history",
   "type": "module",
   "main": "lib/index.js",

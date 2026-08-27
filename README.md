@@ -9,7 +9,7 @@ Unattended scheduled-jobs plugin for DeepSeek Harness (dsh): run **agent tasks**
 ## UI
 
 - **Sidebar section**: status dot (last result) + next-trigger time, live elapsed timer while running; rows expand into run history, and clicking an agent run jumps straight to that run's full session.
-- **Create / edit modal**: trigger kind, task kind, mode / permission / model knobs (blank = inherit defaults), working directory, timeout, and overlap / misfire policies — all on one screen.
+- **Create / edit modal**: trigger presets (hourly / daily / weekdays / weekly, with cron expression / interval / one-shot tucked into a custom tier), task kind, mode / permission / model knobs (blank = inherit defaults), working directory, timeout, and overlap / misfire policies — all on one screen; the time zone is taken silently from the browser (edits keep the job's own).
 
 | Create a job | Row actions |
 | --- | --- |
@@ -134,9 +134,12 @@ drills into its recent run history, and failed runs expand their summary
 tail, session id, and exit code. Rows carry hover actions — run an idle job
 now (the `cron_run_now` semantics), or stop the run in flight (the record
 settles as `killed`; later occurrences are untouched). The panel's `+`
-opens a create form (name, cron/interval/one-shot trigger, agent/command
-task, working directory with a browse dialog over the host's directory
-capability, timeout, overlap/misfire policy); created jobs persist in the
+opens a create form (name; trigger presets — hourly/daily/weekdays/weekly,
+compiled to plain cron shapes and mapped back onto the presets on edit, with
+cron expression/interval/one-shot in a custom tier and the time zone taken
+silently from the browser; agent/command task; working directory with a
+browse dialog over the host's directory capability; timeout; overlap/misfire
+policy); created jobs persist in the
 storage domain's `manual` table, re-normalize on every boot, and show a
 "manual" chip beside config-declared jobs — a config job with the same name
 wins and evicts the manual copy. A manual job's drill-in view carries a
