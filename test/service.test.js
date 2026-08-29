@@ -213,6 +213,19 @@ test("manualSpecs: only manual jobs, raw specs as stored", async () => {
 	assert.deepEqual(service.manualSpecs(), { "manual-echo": spec });
 });
 
+test("normalizeJobs: description trims, defaults empty, and rejects non-strings", async () => {
+	const [bare] = normalizeJobs([CRON_JOB]);
+	assert.equal(bare.description, "");
+	const [described] = normalizeJobs([{ ...CRON_JOB, description: "  盘后复盘管线  " }]);
+	assert.equal(described.description, "盘后复盘管线");
+	assert.throws(() => normalizeJobs([{ ...CRON_JOB, description: 7 }]), /description must be a string/);
+	// The view carries it only when set, so cron_list and the overlay stay clean.
+	const service = await makeService([CRON_JOB, { ...CMD_JOB, description: "hourly echo" }]);
+	const [daily, echo] = service.listView();
+	assert.equal(daily.description, undefined);
+	assert.equal(echo.description, "hourly echo");
+});
+
 test("normalizeJobs: agent execution knobs default empty and pass through", () => {
 	const [bare] = normalizeJobs([CRON_JOB]);
 	assert.equal(bare.task.provider, "");

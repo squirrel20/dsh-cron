@@ -62,12 +62,14 @@ test("buildJobSpec keeps only provided blocks and drops undefined keys", () => {
 test("buildJobSpec forwards optional policy, delivery, and enabled", () => {
 	const spec = buildJobSpec({
 		name: "nightly-sync",
+		description: "hourly workspace sync",
 		schedule: { everySeconds: 3600 },
 		task: { kind: "command", argv: ["/bin/true"] },
 		policy: { overlap: "queue", misfire: undefined },
 		delivery: { argv: ["/usr/bin/notify"], onlyOnFailure: false },
 		enabled: false,
 	});
+	assert.equal(spec.description, "hourly workspace sync");
 	assert.deepEqual(spec.policy, { overlap: "queue" });
 	assert.deepEqual(spec.delivery, { argv: ["/usr/bin/notify"], onlyOnFailure: false });
 	assert.equal(spec.enabled, false);
