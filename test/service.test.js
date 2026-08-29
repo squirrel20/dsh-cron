@@ -243,3 +243,27 @@ test("normalizeJobs: agent execution knobs default empty and pass through", () =
 	assert.equal(knobbed.task.preset, "standard");
 	assert.equal(knobbed.task.access, "workspace-write");
 });
+
+test("runsView: a running command run's summary carries the live output tail", async () => {
+	const service = await makeService([{
+		name: "stream",
+		schedule: { everySeconds: 3600 },
+		task: { kind: "command", argv: ["node", "-e", "console.log('live-tail'); setTimeout(() => {}, 30_000)"], timeoutSeconds: 60 },
+	}]);
+	await service.runNow("stream");
+	const entry = service.running.get("stream");
+	// Wait for the first stdout chunk to reach the in-memory tail.
+	for (let i = 0; i < 200 && entry.liveOutput === ""; i++) {
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+	const live = service.runsView("stream", 10)[0];
+	assert.equal(live.status, "running");
+	assert.match(live.summary, /live-tail/);
+	// The durable record itself stays empty until settlement.
+	assert.equal(service.domain.table("runs").get("stream#0000000001").summary, "");
+	service.stopRun("stream");
+	await entry.promise;
+	const settled = service.runsView("stream", 10)[0];
+	assert.equal(settled.status, "killed");
+	assert.match(settled.summary, /live-tail/);
+});
