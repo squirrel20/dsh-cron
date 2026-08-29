@@ -57,7 +57,6 @@ profile 的 `package.json`：
 ```yaml
 - id: dsh-cron
   config:
-    maxConcurrentRuns: 1
     historyLimit: 50
     jobs:
       - name: daily-log-review
@@ -77,6 +76,8 @@ profile 的 `package.json`：
 ```
 
 作业配置错误（重名、非法表达式、缺时区等）在挂载期 fail loud，不会静默吞掉。
+
+同层还有一个可选的 `maxConcurrentRuns`：**默认 `0` = 不限并发**，互不相干的作业没理由互相排队（作业自身的重叠另由 `policy.overlap` 管）。只有当你确实要给宿主压上一个全局上限时才设正数——设 `1` 意味着全部作业串行，撞点的那批会依次等前一个跑完。
 
 ## 使用
 

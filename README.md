@@ -57,7 +57,6 @@ Declare always-on jobs by overriding the config in the profile's `cordis.patch.y
 ```yaml
 - id: dsh-cron
   config:
-    maxConcurrentRuns: 1
     historyLimit: 50
     jobs:
       - name: daily-log-review
@@ -80,6 +79,8 @@ Declare always-on jobs by overriding the config in the profile's `cordis.patch.y
 ```
 
 Job misconfiguration (duplicate names, invalid expressions, missing time zone, …) fails loud at mount time — it is never swallowed silently.
+
+The same block takes an optional `maxConcurrentRuns`: **`0` (the default) means unbounded** — unrelated jobs have no reason to queue behind each other, and a job's own overlap is already governed by `policy.overlap`. Set a positive number only to deliberately cap host-wide load; `1` serializes every job, so jobs due at the same minute run one after another.
 
 ## Usage
 

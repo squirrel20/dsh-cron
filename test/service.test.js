@@ -33,9 +33,9 @@ const ctx = { logger: { info() {}, warn() {}, error() {} } };
 const GC_OFF = { enabled: false, root: "/nonexistent", graceMs: 60_000 };
 
 /** A started-enough service: domain attached, job states seeded, floors set. */
-async function makeService(rawJobs, { seed = {} } = {}) {
+async function makeService(rawJobs, { seed = {}, maxConcurrentRuns = 0 } = {}) {
 	const jobs = normalizeJobs(rawJobs);
-	const service = new CronService(ctx, { historyLimit: 3, maxConcurrentRuns: 1 }, jobs, GC_OFF);
+	const service = new CronService(ctx, { historyLimit: 3, maxConcurrentRuns }, jobs, GC_OFF);
 	service.domain = stubDomain();
 	const now = Date.now();
 	for (const job of jobs) {
@@ -60,6 +60,26 @@ const CMD_JOB = {
 	schedule: { everySeconds: 3600 },
 	task: { kind: "command", argv: ["echo", "hi"], timeoutSeconds: 30 },
 };
+
+const sleepJob = (name) => ({
+	name,
+	schedule: { everySeconds: 3600 },
+	task: { kind: "command", argv: ["sleep", "0.4"], timeoutSeconds: 30 },
+});
+
+test("run gate: unbounded by default, a positive cap serializes unrelated jobs", async () => {
+	async function elapsedForTwoRuns(maxConcurrentRuns) {
+		const service = await makeService([sleepJob("a"), sleepJob("b")], { maxConcurrentRuns });
+		const startedAt = Date.now();
+		await service.runNow("a");
+		await service.runNow("b");
+		await Promise.all(["a", "b"].map((name) => service.running.get(name)?.promise));
+		return Date.now() - startedAt;
+	}
+	// Two 0.4s jobs: overlapped they finish well inside one serial pair.
+	assert.ok(await elapsedForTwoRuns(0) < 700);
+	assert.ok(await elapsedForTwoRuns(1) >= 750);
+});
 
 test("listView: schedule text, effective enabled, next occurrence", async () => {
 	const service = await makeService([CRON_JOB, { ...CMD_JOB, enabled: false }]);
