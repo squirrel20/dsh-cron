@@ -8,7 +8,7 @@ Unattended scheduled-jobs plugin for DeepSeek Harness (dsh): run **agent tasks**
 
 ## UI
 
-- **Sidebar section**: status dot (last result) + next-trigger time, live elapsed timer while running; rows expand into run history, and clicking an agent run jumps straight to that run's full session.
+- **Sidebar section**: status dot (last result) + next-trigger time, live elapsed timer while running; rows expand into run history; clicking an agent run jumps straight to that run's full session, and clicking a command run opens a run-detail page over the center column (status, duration, exit code, command, output tail).
 - **Create / edit modal**: trigger presets (hourly / daily / weekdays / weekly, with cron expression / interval / one-shot tucked into a custom tier), task kind, mode / permission / model knobs (blank = inherit defaults), working directory, timeout, and overlap / misfire policies — all on one screen; the time zone is taken silently from the browser (edits keep the job's own).
 
 | Create a job | Row actions |
@@ -94,7 +94,7 @@ Click **`+`** in the sidebar's **Cron Jobs** section header. The New job dialog 
 - **Working directory** — type a path or browse via the folder icon.
 - **Timeout, On overlap, On misfire** — see [Features](#features) for the policy semantics.
 
-**Create & enable** persists the job (a "manual" chip marks it apart from config-declared jobs). Afterwards, each row's `⋯` menu offers **Run now / Pause schedule / Edit job / Delete job**; clicking a row expands its run history, and clicking an agent run opens that run's full session replay.
+**Create & enable** persists the job (a "manual" chip marks it apart from config-declared jobs). Afterwards, each row's `⋯` menu offers **Run now / Pause schedule / Edit job / Delete job**; clicking a row expands its run history; clicking an agent run opens that run's full session replay, and clicking a command run (or a pruned-session agent run) opens its run-detail page over the center column.
 
 ### Adding a job from a session
 
@@ -130,8 +130,10 @@ The `runs` table keeps the most recent `historyLimit` entries keyed by `<job>#<s
 When the profile includes `@deepseek-ai/dsh-web-app`, the plugin also ships a
 sidebar overlay: a clock badge at the sidebar foot opens a panel listing
 every job (kind, schedule, next occurrence, latest outcome); a job row
-drills into its recent run history, and failed runs expand their summary
-tail, session id, and exit code. Rows carry hover actions — run an idle job
+drills into its recent run history; clicking a command run (or an agent
+run whose session was pruned) opens a run-detail page over the center
+column — status, scheduled/start/finish instants, duration, exit code,
+argv, and the stored summary tail. Rows carry hover actions — run an idle job
 now (the `cron_run_now` semantics), or stop the run in flight (the record
 settles as `killed`; later occurrences are untouched). The panel's `+`
 opens a create form (name; trigger presets — hourly/daily/weekdays/weekly,
