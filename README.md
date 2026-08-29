@@ -87,7 +87,7 @@ Job misconfiguration (duplicate names, invalid expressions, missing time zone, �
 
 Click **`+`** in the sidebar's **Cron Jobs** section header. The New job dialog configures everything on one screen:
 
-- **Name** — lowercase, digits and `-`.
+- **Name** — letters (any script), digits, `-` and `_`; no spaces.
 - **Trigger** — `cron` (5-field expression + IANA time zone), `interval`, or `one-shot`.
 - **Task** — `agent` (a prompt executed unattended through the full dsh toolchain) or `command` (an argv to spawn).
 - **Preset / Access / Model** — leave blank to inherit the host defaults.

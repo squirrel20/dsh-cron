@@ -84,7 +84,7 @@ profile 的 `package.json`：
 
 点侧栏 **Cron Jobs** section 标题上的 **`+`**，新建作业弹窗一屏配完：
 
-- **名称**——小写字母、数字与 `-`。
+- **名称**——任意语种字母（含中文）、数字与 `-`、`_`；不含空格。
 - **触发**——`cron`（5 字段表达式 + IANA 时区）、`interval` 周期、`one-shot` 一次性。
 - **任务**——`agent`（prompt 无人值守走完整 dsh 工具链）或 `command`（spawn 一条 argv）。
 - **Preset / 权限 / 模型**——留空继承宿主默认。

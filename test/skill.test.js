@@ -20,7 +20,7 @@ test("skill content teaches the tools and the validator's vocabulary", () => {
 	for (const term of ["everySeconds", "timeZone", "RFC 3339", "overlap", "misfire", "timeoutSeconds", "onlyOnFailure"]) {
 		assert.ok(content.includes(term), `content must document ${term}`);
 	}
-	assert.ok(content.includes("[a-z][a-z0-9-]*"), "content must state the job-name grammar");
+	assert.ok(content.includes("[\\p{L}\\p{N}][\\p{L}\\p{N}_-]*"), "content must state the job-name grammar");
 });
 
 test("registerCronSkill defers to the skills service and registers CRON_SKILL", () => {

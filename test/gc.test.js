@@ -12,11 +12,13 @@ const UUID = "af9c8064-2007-4e43-a00b-5af5bd95c6da";
 test("isCronSessionDirName: accepts exactly the ids the executor mints", () => {
 	assert.equal(isCronSessionDirName(`cron-daily-log-review-${UUID}`), true);
 	assert.equal(isCronSessionDirName(`cron-a-${UUID}`), true);
+	assert.equal(isCronSessionDirName(`cron-Daily-${UUID}`), true);
+	assert.equal(isCronSessionDirName(`cron-\u5e02\u573a\u590d\u76d8-${UUID}`), true);
 	for (const bad of [
 		`session-${UUID}`,
 		"cron-daily",
 		`cron--${UUID}`,
-		`cron-Daily-${UUID}`,
+		`cron-\u5e02\u573a \u590d\u76d8-${UUID}`,
 		`cron-daily-${UUID}x`,
 		`cron-daily-${UUID.toUpperCase()}`,
 	]) {
