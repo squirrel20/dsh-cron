@@ -1,0 +1,7 @@
+# dsh bundle patch: insert this provider into a profile's layer stack. Patches
+# apply after every bundle layer, so this row lands after the dsh-cron row it
+# injects — order in the profile's bundle list does not matter.
+- insert:
+    - id: dsh-cron-source-demo
+      name: 'dsh-cron-source-demo'
+      config: {}

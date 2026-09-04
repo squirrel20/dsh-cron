@@ -18,6 +18,7 @@ Unattended scheduled-jobs plugin for DeepSeek Harness (dsh): run **agent tasks**
 ## Features
 
 - **Three trigger kinds**: `cron` (5-field expression + explicit IANA `timeZone`; the process time zone is never consulted), `everySeconds` (anchor-aligned interval, 60s minimum), `at` (one-time RFC 3339 instant; a Z or numeric offset is required).
+- **Three ways to declare a job**: profile config (declarative, versioned with the profile), the runtime overlay (`+` in the sidebar, or `cron_create` from a session — persisted as "manual" jobs), and other plugins through the `cron` service (`ctx.cron.registerJob`, see [Adding jobs from a plugin](#adding-jobs-from-a-plugin)).
 - **Two task kinds**: `agent` (create a one-shot agent via `ctx.agents.create`, submit the prompt, wait for quiescence, take the last assistant message as the summary, dispose to finish — i.e. the dsh-headless one-shot recipe); `command` (spawn a child process, record exit code and output tail).
 - **Persistent state**: job dispatch state and run history live in the storage domain layer (`ctx.storage.domain`, domain name `cron`), never in session event logs.
 - **Reliability semantics**: at-most-once per occurrence (`lastFiredMs` is persisted before execution); missed occurrences are never replayed one by one (the misfire policy runs at most once, against the latest due occurrence); runs interrupted by a crash are repaired to `aborted` on the next startup.
@@ -105,6 +106,41 @@ Just ask the agent in any session:
 
 The bundled **cron-create** skill (auto-registered when the host has a skill registry) walks the model through collect → confirm → create → verify, calling the `cron_create` tool under the hood; `cron_delete` removes a manual job the same way. Jobs created from a session are ordinary manual jobs — the exact same overlay the web dialog writes — so they show up in the sidebar immediately and can be edited there later. The read/steer tools (`cron_list`, `cron_runs`, `cron_run_now`, `cron_enable`, `cron_disable`) work on config-declared jobs too.
 
+### Adding jobs from a plugin
+
+A schedule often belongs with a piece of software rather than with one host: the package that ships a refresh script also knows how often it should run. Such a package can register its own jobs — installing it creates them, unmounting it retires them, and nobody transcribes a spec into a dialog on every machine.
+
+The provider injects the `cron` service and registers inside an effect, exactly like a `dsh-ingest` source plugin:
+
+```js
+export const name = "cron-source-kb";
+export const inject = ["cron"];
+
+export function apply(ctx, config) {
+  ctx.effect(() => ctx.cron.registerJobs([
+    {
+      name: "kb-refresh",
+      description: "Re-index the knowledge base",
+      schedule: { cron: "30 7 * * *", timeZone: "Asia/Shanghai" },
+      task: { kind: "command", argv: ["/bin/sh", `${config.repoRoot}/scripts/kb-refresh.sh`] },
+      policy: { overlap: "skip", misfire: "runOnce" },
+    },
+  ], { owner: "dsh-cron-source-kb" }), "kb.cron()");
+}
+```
+
+- The spec is the same vocabulary config and `cron_create` use, and it is validated **synchronously**: a bad schedule throws inside the provider's own `apply`, naming the field.
+- `owner` is required — the overlay uses it to tell the user which package brought a job.
+- `registerJob` returns a disposer (`registerJobs` returns one for the batch, and rolls back if any member is defective, so a provider never mounts half its schedules).
+- Registering may precede dsh-cron's own startup; registrations attach as soon as the scheduler is ready and are replayed if dsh-cron reloads.
+- Names must be free: a name declared in profile config, or already registered by another provider, throws rather than silently losing to mount order.
+
+Plugin jobs are ordinary jobs in the list — the same run history, run-now, pause and session jump-through — but they are **read-only** in the overlay and to `cron_create` / `cron_delete`: editing means editing the provider, and removing means uninstalling it (`updateJob` / `cron_delete` answer `plugin_job`). Pausing is the exception: an enable override is the user's, and it survives re-registration.
+
+A runnable copy of the provider above lives in [`examples/dsh-cron-source-demo`](examples/dsh-cron-source-demo) — add it to a profile's `dependencies` and `dsh.profile.bundles` to watch a plugin job appear.
+
+Unmounting a provider stops its jobs but keeps their dispatch state and whole run history — reinstalling resumes the same job rather than starting a stranger under its name. What is left behind shows as an **orphan** row (marked "plugin gone", sorted last, no next occurrence) whose only action is **Delete job**, which clears that leftover history for good.
+
 ## Run records
 
 The `runs` table keeps the most recent `historyLimit` entries keyed by `<job>#<seq>`:
@@ -124,6 +160,7 @@ The `runs` table keeps the most recent `historyLimit` entries keyed by `<job>#<s
 
 - Agent runs carry a fixed `[CRON RUN]` framing that states the run is unattended and questions are forbidden. It is injected as a scoped system-prompt section, so the user message holds only the job's prompt; hosts without the system-prompt service fall back to prepending it to the message.
 - Config jobs come from plugin config (declarative); the conversational tools (`cron_list` / `cron_runs` / `cron_run_now` / `cron_enable` / `cron_disable`) observe and steer them but never create or delete them. Runtime "manual" jobs are the exception: `cron_create` / `cron_delete` manage those from a session, guided by the bundled `cron-create` skill (registered into the host's skill registry when one exists), through the same `manual`-table overlay as the web dialog.
+- Plugin-registered jobs (`source: "plugin"`) are owned by their provider package: they can be run, paused and inspected, but not edited or deleted from the overlay or a session — that is what installing and uninstalling the provider is for. Unmounting a provider leaves an orphan row holding the job's history until the user deletes it.
 - `queue` depth is 1: only the single latest squeezed-out occurrence is kept.
 
 ## Web overlay

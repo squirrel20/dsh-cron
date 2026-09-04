@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CronService, normalizeJobs } from "../lib/service.js";
+import { CronService, normalizeJobs, runKey } from "../lib/service.js";
 
 /** In-memory stand-in for one storage-domain table. */
 function stubTable() {
@@ -25,7 +25,7 @@ function stubTable() {
 }
 
 function stubDomain() {
-	const tables = { runs: stubTable(), jobs: stubTable(), manual: stubTable() };
+	const tables = { runs: stubTable(), jobs: stubTable(), manual: stubTable(), plugin: stubTable() };
 	return { table: (name) => tables[name], close: async () => {} };
 }
 
@@ -172,7 +172,7 @@ test("runNow: the running record is readable once the call resolves", async () =
 	}
 	const jobs = normalizeJobs([CMD_JOB]);
 	const service = new CronService(ctx, { historyLimit: 3, maxConcurrentRuns: 1 }, jobs, GC_OFF);
-	const tables = { runs: slowTable(), jobs: slowTable(), manual: slowTable() };
+	const tables = { runs: slowTable(), jobs: slowTable(), manual: slowTable(), plugin: slowTable() };
 	service.domain = { table: (name) => tables[name], close: async () => {} };
 	await tables.jobs.put("echo", { anchorMs: Date.now(), lastFiredMs: 0, runSeq: 0 });
 	service.floor.set("echo", Date.now());
@@ -286,4 +286,139 @@ test("runsView: a running command run's summary carries the live output tail", a
 	const settled = service.runsView("stream", 10)[0];
 	assert.equal(settled.status, "killed");
 	assert.match(settled.summary, /live-tail/);
+});
+
+const PLUGIN_SPEC = {
+	name: "kb-refresh",
+	description: "refresh the kb",
+	schedule: { everySeconds: 3600 },
+	task: { kind: "command", argv: ["/bin/echo", "hi"], timeoutSeconds: 30 },
+};
+
+test("attachPluginJob schedules a provider's job, naming its owner", async () => {
+	const service = await makeService([CRON_JOB]);
+	const outcome = await service.attachPluginJob(PLUGIN_SPEC, "dsh-cron-source-kb");
+	assert.equal(outcome.job.name, "kb-refresh");
+	const view = service.listView().find((job) => job.name === "kb-refresh");
+	assert.equal(view.source, "plugin");
+	assert.equal(view.owner, "dsh-cron-source-kb");
+	assert.equal(view.description, "refresh the kb");
+	assert.ok(view.next !== undefined, "an attached job is scheduled from now");
+	// The projection is durable so the next boot can protect the ledger.
+	const row = service.domain.table("plugin").get("kb-refresh");
+	assert.equal(row.owner, "dsh-cron-source-kb");
+	assert.deepEqual(row.spec, PLUGIN_SPEC);
+});
+
+test("re-attaching the same job keeps its dispatch state and history, and updates the spec", async () => {
+	const service = await makeService([]);
+	await service.attachPluginJob(PLUGIN_SPEC, "pkg");
+	await service.domain.table("jobs").update("kb-refresh", (s) => ({ ...s, runSeq: 7, lastFiredMs: 1 }));
+	const createdAt = service.domain.table("plugin").get("kb-refresh").createdAt;
+	await service.attachPluginJob({ ...PLUGIN_SPEC, schedule: { everySeconds: 600 } }, "pkg");
+	assert.equal(service.domain.table("jobs").get("kb-refresh").runSeq, 7, "dispatch state survives a remount");
+	assert.equal(service.domain.table("plugin").get("kb-refresh").createdAt, createdAt);
+	assert.equal(service.jobs.filter((job) => job.name === "kb-refresh").length, 1);
+	assert.equal(service.listView().find((job) => job.name === "kb-refresh").schedule, "every 600s");
+});
+
+test("attachPluginJob refuses a config name and another provider's name", async () => {
+	const service = await makeService([{ ...PLUGIN_SPEC, name: "daily" }]);
+	assert.equal((await service.attachPluginJob({ ...PLUGIN_SPEC, name: "daily" }, "pkg")).code, "config_job");
+	await service.attachPluginJob(PLUGIN_SPEC, "pkg-a");
+	assert.equal((await service.attachPluginJob(PLUGIN_SPEC, "pkg-b")).code, "job_exists");
+	assert.equal(service.listView().find((job) => job.name === "kb-refresh").owner, "pkg-a");
+});
+
+test("a plugin job shadows a manual job of the same name without destroying it", async () => {
+	const service = await makeService([]);
+	await service.addJob({ ...PLUGIN_SPEC, task: { kind: "command", argv: ["/bin/echo", "mine"] } });
+	await service.attachPluginJob(PLUGIN_SPEC, "pkg");
+	const view = service.listView().find((job) => job.name === "kb-refresh");
+	assert.equal(view.source, "plugin");
+	// The user's own job is only shadowed: uninstalling the provider brings it back.
+	assert.ok(service.domain.table("manual").get("kb-refresh") !== undefined);
+});
+
+test("detachPluginJob stops the job but keeps its history as an orphan row", async () => {
+	const service = await makeService([]);
+	await service.attachPluginJob(PLUGIN_SPEC, "pkg");
+	await service.runNow("kb-refresh");
+	await service.running.get("kb-refresh")?.promise;
+	assert.equal(service.detachPluginJob("kb-refresh", "other-pkg"), false, "only the owner detaches its job");
+	assert.equal(service.detachPluginJob("kb-refresh", "pkg"), true);
+
+	const view = service.listView().find((job) => job.name === "kb-refresh");
+	assert.equal(view.orphan, true);
+	assert.equal(view.enabled, false);
+	assert.equal(view.owner, "pkg");
+	assert.equal(view.lastRun.status, "ok", "the run history outlives the provider");
+	assert.equal(view.next, undefined);
+	assert.equal(service.runsView("kb-refresh", 10).length, 1, "an orphan's runs stay readable");
+	assert.match((await service.runNow("kb-refresh")).message, /not mounted/);
+});
+
+test("detaching cancels the provider's run in flight", async () => {
+	const service = await makeService([]);
+	await service.attachPluginJob(
+		{ ...PLUGIN_SPEC, task: { kind: "command", argv: ["sleep", "5"], timeoutSeconds: 30 } },
+		"pkg",
+	);
+	await service.runNow("kb-refresh");
+	const entry = service.running.get("kb-refresh");
+	service.detachPluginJob("kb-refresh", "pkg");
+	await entry.promise;
+	assert.equal(service.runsView("kb-refresh", 1)[0].status, "aborted");
+});
+
+test("plugin jobs are read-only until their provider is gone; then only their history is deletable", async () => {
+	const service = await makeService([]);
+	await service.attachPluginJob(PLUGIN_SPEC, "pkg");
+	assert.equal((await service.updateJob("kb-refresh", PLUGIN_SPEC)).code, "plugin_job");
+	const refused = await service.deleteJob("kb-refresh");
+	assert.equal(refused.code, "plugin_job");
+	assert.match(refused.message, /pkg/);
+	// A manual job may not take over the name while the ledger is still there.
+	service.detachPluginJob("kb-refresh", "pkg");
+	assert.equal((await service.addJob(PLUGIN_SPEC)).code, "job_exists");
+	assert.deepEqual(await service.deleteJob("kb-refresh"), { job: "kb-refresh", deleted: true });
+	assert.equal(service.listView().find((job) => job.name === "kb-refresh"), undefined);
+	assert.equal(service.domain.table("plugin").get("kb-refresh"), undefined);
+	assert.equal((await service.addJob(PLUGIN_SPEC)).job.source, "manual");
+});
+
+test("repairLedger spares a plugin job's records while its provider is still mounting", async () => {
+	const service = await makeService([]);
+	const runs = service.domain.table("runs");
+	await service.domain.table("plugin").put("kb-refresh", {
+		owner: "pkg",
+		spec: PLUGIN_SPEC,
+		createdAt: "2026-09-01T00:00:00.000Z",
+		lastSeenAt: "2026-09-01T00:00:00.000Z",
+	});
+	await service.domain.table("jobs").put("kb-refresh", { anchorMs: 1, lastFiredMs: 1, runSeq: 3 });
+	await runs.put(runKey("kb-refresh", 3), {
+		job: "kb-refresh",
+		seq: 3,
+		target: "2026-09-01T00:00:00.000Z",
+		startedAt: "2026-09-01T00:00:00.000Z",
+		status: "running",
+		summary: "",
+	});
+	await runs.put(runKey("gone", 1), {
+		job: "gone",
+		seq: 1,
+		target: "2026-09-01T00:00:00.000Z",
+		startedAt: "2026-09-01T00:00:00.000Z",
+		status: "ok",
+		summary: "",
+	});
+	await service.domain.table("jobs").put("gone", { anchorMs: 1, lastFiredMs: 0, runSeq: 1 });
+
+	await service.repairLedger();
+
+	assert.equal(runs.get(runKey("kb-refresh", 3)).status, "aborted", "an interrupted run is still repaired");
+	assert.ok(service.domain.table("jobs").get("kb-refresh") !== undefined);
+	assert.equal(runs.get(runKey("gone", 1)), undefined, "a job nobody declares still loses its ledger");
+	assert.equal(service.domain.table("jobs").get("gone"), undefined);
 });

@@ -26,7 +26,7 @@ function stubTable() {
 }
 
 function stubDomain() {
-	const tables = { runs: stubTable(), jobs: stubTable(), manual: stubTable() };
+	const tables = { runs: stubTable(), jobs: stubTable(), manual: stubTable(), plugin: stubTable() };
 	return { table: (name) => tables[name], close: async () => {} };
 }
 

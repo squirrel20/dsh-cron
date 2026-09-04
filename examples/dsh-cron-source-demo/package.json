@@ -1,0 +1,23 @@
+{
+  "name": "dsh-cron-source-demo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Example dsh plugin that registers its own cron jobs through the cron service",
+  "type": "module",
+  "main": "lib/index.js",
+  "files": [
+    "lib",
+    "cordis.patch.yml"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "dsh-cron": "^0.13.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
