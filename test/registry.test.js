@@ -4,6 +4,7 @@ import {
 	JobNameReservedError,
 	JobOwnerConflictError,
 	JobRegistry,
+	MissingHandlerError,
 	MissingOwnerError,
 } from "../lib/registry.js";
 
@@ -19,8 +20,8 @@ function stubService() {
 		domain: {},
 		attached: [],
 		detached: [],
-		async attachPluginJob(spec, owner) {
-			this.attached.push({ spec, owner });
+		async attachPluginJob(spec, owner, run) {
+			this.attached.push({ spec, owner, run });
 			return { job: { name: spec.name } };
 		},
 		detachPluginJob(name, owner) {
@@ -141,4 +142,14 @@ test("an attach that throws is logged, not swallowed into a broken queue", async
 	registry.register({ ...SPEC, name: "kb-parse" }, { owner: "pkg" });
 	await registry.idle();
 	assert.equal(registry.entries.size, 2);
+});
+
+test("a callback registration carries its handler to the service and demands one up front", async () => {
+	const { registry, service } = makeRegistry();
+	const spec = { name: "ingest-notes", schedule: { everySeconds: 3600 }, task: { kind: "callback" } };
+	assert.throws(() => registry.register(spec, { owner: "pkg" }), MissingHandlerError);
+	const run = async () => "done";
+	registry.register(spec, { owner: "pkg", run });
+	await registry.idle();
+	assert.equal(service.attached[0].run, run);
 });

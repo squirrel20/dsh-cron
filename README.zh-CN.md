@@ -19,7 +19,7 @@ DeepSeek Harness (dsh) 的无人值守定时任务插件：按 cron 表达式 / 
 
 - **三种触发**：`cron`（5 字段表达式 + 显式 IANA `timeZone`，绝不读进程时区）、`everySeconds`（锚点对齐周期，最短 60s）、`at`（RFC 3339 一次性时刻，必须带 Z/偏移量）。
 - **三种声明方式**：profile config（声明式，随 profile 一起版本化）、运行时面板（侧栏 `+`，或会话里 `cron_create`——落成「manual」作业）、以及别的插件经 `cron` 服务注册（`ctx.cron.registerJob`，见[插件模式添加作业](#插件模式添加作业)）。
-- **两种任务**：`agent`（`ctx.agents.create` 新建一次性 agent，提交 prompt，等 quiescence，取最后一条 assistant 文本作 summary，dispose 收尾——即 dsh-headless 的 one-shot 配方）；`command`（spawn 子进程，记录 exit code 与输出尾部）。
+- **三种任务**：`agent`（`ctx.agents.create` 新建一次性 agent，提交 prompt，等 quiescence，取最后一条 assistant 文本作 summary，dispose 收尾——即 dsh-headless 的 one-shot 配方）；`command`（spawn 子进程，记录 exit code 与输出尾部）；`callback`（插件注册的进程内 handler，仅插件作业可用，见[插件模式添加作业](#插件模式添加作业)）。
 - **持久状态**：作业 dispatch 状态与运行历史存 storage domain 层（`ctx.storage.domain`，domain 名 `cron`），不进会话事件日志。
 - **可靠性语义**：每个发生点 at-most-once（先落盘 `lastFiredMs` 再执行）；错过的发生点绝不逐个补跑（misfire 策略最多补一次、取最新一个到期点）；宕机中断的运行在下次启动时修复为 `aborted`。
 - **策略**：`overlap: skip | queue | replace`（上一轮未跑完时跳过 / 排队最新一个 / 掐掉重来）；`misfire: skip | runOnce`（停机期间错过的发生点忽略 / 补跑一次）。
@@ -125,6 +125,24 @@ export function apply(ctx, config) {
   ], { owner: "dsh-cron-source-kb" }), "kb.cron()");
 }
 ```
+
+提供方要跑的是自己的代码（而不是 shell 出去调脚本、或 curl 自己所在的宿主）时，用 **callback** 任务，把函数一并交出来：
+
+```js
+ctx.effect(() => ctx.cron.registerJob({
+  name: "ingest-notes",
+  schedule: { cron: "10 23 * * *", timeZone: "Asia/Shanghai" },
+  task: { kind: "callback", timeoutSeconds: 700 },
+}, {
+  owner: "dsh-ingest-source-notes",
+  run: async ({ signal }) => {
+    const record = await service.run("notes-research", { signal });
+    return { ok: record.status === "ok", summary: `${record.itemsNew} new` };
+  },
+}), "notes.cron()");
+```
+
+handler 收到 `{ job, target, seq, signal }`，返回摘要字符串或 `{ ok?, summary?, error? }`；抛异常即记 `failed`，超时会 abort `signal`。`callback` 是唯一 config 与 `cron_create` 用不了的任务类型——盘上的一份 spec 没人给得出那个函数——因此在那两条路径上按名字拒绝。
 
 - spec 与 config、`cron_create` 是同一套词汇，且**同步校验**：schedule 写错当场在提供方自己的 `apply` 里抛错，并指名是哪个字段。
 - `owner` 必填——面板要据此告诉用户这个作业是谁带来的。

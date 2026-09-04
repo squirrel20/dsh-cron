@@ -19,7 +19,7 @@ Unattended scheduled-jobs plugin for DeepSeek Harness (dsh): run **agent tasks**
 
 - **Three trigger kinds**: `cron` (5-field expression + explicit IANA `timeZone`; the process time zone is never consulted), `everySeconds` (anchor-aligned interval, 60s minimum), `at` (one-time RFC 3339 instant; a Z or numeric offset is required).
 - **Three ways to declare a job**: profile config (declarative, versioned with the profile), the runtime overlay (`+` in the sidebar, or `cron_create` from a session — persisted as "manual" jobs), and other plugins through the `cron` service (`ctx.cron.registerJob`, see [Adding jobs from a plugin](#adding-jobs-from-a-plugin)).
-- **Two task kinds**: `agent` (create a one-shot agent via `ctx.agents.create`, submit the prompt, wait for quiescence, take the last assistant message as the summary, dispose to finish — i.e. the dsh-headless one-shot recipe); `command` (spawn a child process, record exit code and output tail).
+- **Three task kinds**: `agent` (create a one-shot agent via `ctx.agents.create`, submit the prompt, wait for quiescence, take the last assistant message as the summary, dispose to finish — i.e. the dsh-headless one-shot recipe); `command` (spawn a child process, record exit code and output tail); `callback` (a plugin-registered handler run in this process — plugin jobs only, see [Adding jobs from a plugin](#adding-jobs-from-a-plugin)).
 - **Persistent state**: job dispatch state and run history live in the storage domain layer (`ctx.storage.domain`, domain name `cron`), never in session event logs.
 - **Reliability semantics**: at-most-once per occurrence (`lastFiredMs` is persisted before execution); missed occurrences are never replayed one by one (the misfire policy runs at most once, against the latest due occurrence); runs interrupted by a crash are repaired to `aborted` on the next startup.
 - **Policies**: `overlap: skip | queue | replace` (when the previous run is still going: skip / queue the latest one occurrence / kill and restart); `misfire: skip | runOnce` (occurrences missed while the process was down: ignore / catch up once).
@@ -128,6 +128,24 @@ export function apply(ctx, config) {
   ], { owner: "dsh-cron-source-kb" }), "kb.cron()");
 }
 ```
+
+A provider that wants to run its own code — rather than shell out to a script or curl its own host — registers a **callback** task and passes the function:
+
+```js
+ctx.effect(() => ctx.cron.registerJob({
+  name: "ingest-notes",
+  schedule: { cron: "10 23 * * *", timeZone: "Asia/Shanghai" },
+  task: { kind: "callback", timeoutSeconds: 700 },
+}, {
+  owner: "dsh-ingest-source-notes",
+  run: async ({ signal }) => {
+    const record = await service.run("notes-research", { signal });
+    return { ok: record.status === "ok", summary: `${record.itemsNew} new` };
+  },
+}), "notes.cron()");
+```
+
+The handler receives `{ job, target, seq, signal }` and returns a summary string or `{ ok?, summary?, error? }`; throwing settles the run as `failed`, and the timeout aborts `signal`. `callback` is the one task kind config and `cron_create` cannot use — a spec on disk has nobody to supply the function — so it is refused there by name.
 
 - The spec is the same vocabulary config and `cron_create` use, and it is validated **synchronously**: a bad schedule throws inside the provider's own `apply`, naming the field.
 - `owner` is required — the overlay uses it to tell the user which package brought a job.

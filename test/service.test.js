@@ -422,3 +422,71 @@ test("repairLedger spares a plugin job's records while its provider is still mou
 	assert.equal(runs.get(runKey("gone", 1)), undefined, "a job nobody declares still loses its ledger");
 	assert.equal(service.domain.table("jobs").get("gone"), undefined);
 });
+
+const CALLBACK_SPEC = {
+	name: "ingest-notes",
+	schedule: { everySeconds: 3600 },
+	task: { kind: "callback", timeoutSeconds: 2 },
+};
+
+test("callback tasks are plugin-only: config and manual specs reject the kind", () => {
+	assert.throws(() => normalizeJobs([CALLBACK_SPEC]), /plugin-registered/);
+	assert.equal(normalizeJobs([CALLBACK_SPEC], { allowCallback: true })[0].task.kind, "callback");
+});
+
+test("a callback job runs its provider's handler in process and settles from what it returns", async () => {
+	const service = await makeService([]);
+	const seen = [];
+	await service.attachPluginJob(CALLBACK_SPEC, "pkg", async (call) => {
+		seen.push(call);
+		return "48 new items";
+	});
+	await service.runNow("ingest-notes");
+	await service.running.get("ingest-notes")?.promise;
+	const run = service.runsView("ingest-notes", 1)[0];
+	assert.equal(run.status, "ok");
+	assert.equal(run.summary, "48 new items");
+	assert.equal(seen.length, 1);
+	assert.equal(seen[0].seq, run.seq);
+	assert.equal(seen[0].target, run.target);
+});
+
+test("a callback that reports failure, throws, or overruns settles accordingly", async () => {
+	const service = await makeService([]);
+	await service.attachPluginJob(CALLBACK_SPEC, "pkg", async () => ({ ok: false, summary: "skipped", error: "NAS offline" }));
+	await service.runNow("ingest-notes");
+	await service.running.get("ingest-notes")?.promise;
+	let run = service.runsView("ingest-notes", 1)[0];
+	assert.equal(run.status, "failed");
+	assert.equal(run.error, "NAS offline");
+
+	await service.attachPluginJob(CALLBACK_SPEC, "pkg", async () => {
+		throw new Error("boom");
+	});
+	await service.runNow("ingest-notes");
+	await service.running.get("ingest-notes")?.promise;
+	run = service.runsView("ingest-notes", 1)[0];
+	assert.equal(run.status, "failed");
+	assert.match(run.error, /boom/);
+
+	await service.attachPluginJob(
+		{ ...CALLBACK_SPEC, task: { kind: "callback", timeoutSeconds: 1 } },
+		"pkg",
+		({ signal }) => new Promise((resolve) => {
+			// A handler that respects the signal is the well-behaved case; the
+			// run settles as timeout either way.
+			signal.addEventListener("abort", () => resolve("aborted"));
+		}),
+	);
+	await service.runNow("ingest-notes");
+	await service.running.get("ingest-notes")?.promise;
+	run = service.runsView("ingest-notes", 1)[0];
+	assert.equal(run.status, "timeout");
+});
+
+test("a callback job without a handler is refused rather than scheduled dead", async () => {
+	const service = await makeService([]);
+	const outcome = await service.attachPluginJob(CALLBACK_SPEC, "pkg");
+	assert.equal(outcome.code, "invalid_job");
+	assert.equal(service.jobs.length, 0);
+});
