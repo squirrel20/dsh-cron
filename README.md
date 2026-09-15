@@ -180,6 +180,7 @@ The `runs` table keeps the most recent `historyLimit` entries keyed by `<job>#<s
 - Config jobs come from plugin config (declarative); the conversational tools (`cron_list` / `cron_runs` / `cron_run_now` / `cron_enable` / `cron_disable`) observe and steer them but never create or delete them. Runtime "manual" jobs are the exception: `cron_create` / `cron_delete` manage those from a session, guided by the bundled `cron-create` skill (registered into the host's skill registry when one exists), through the same `manual`-table overlay as the web dialog.
 - Plugin-registered jobs (`source: "plugin"`) are owned by their provider package: they can be run, paused and inspected, but not edited or deleted from the overlay or a session — that is what installing and uninstalling the provider is for. Unmounting a provider leaves an orphan row holding the job's history until the user deletes it.
 - `queue` depth is 1: only the single latest squeezed-out occurrence is kept.
+- A run's Session is a plain durable Session (the `dsh-headless` shape), so its conversation stays openable after the run settles. A conversation that is on screen at that exact moment returns to the workspace, and the run row reopens the persisted transcript (the client re-pulls the host session list once when the id is no longer listed). Run Sessions persisted by earlier versions still carry the `origin: "subagent"` header and stay unopenable.
 
 ## Web overlay
 
