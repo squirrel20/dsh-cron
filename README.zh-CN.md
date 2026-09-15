@@ -177,6 +177,7 @@ handler 收到 `{ job, target, seq, signal }`，返回摘要字符串或 `{ ok?,
 - config 作业只来自插件 config（声明式）；对话式工具（`cron_list` / `cron_runs` / `cron_run_now` / `cron_enable` / `cron_disable`）只观察与拨动它们，不创建或删除。运行时「manual」作业是例外：`cron_create` / `cron_delete` 可在会话中创建与删除，配套的 `cron-create` skill（host 存在 skill 注册表时自动注册）指导模型走完整流程，底层与网页创建对话框共用同一 `manual` 表。
 - 插件注册的作业（`source: "plugin"`）归它的提供方包所有：可运行、可暂停、可查看，但面板与会话都改不了、删不掉——改就改提供方，删就卸载它。卸载后留下的孤儿行托着这段运行历史，由用户决定何时删掉。
 - `queue` 深度为 1：只保留最新一个被挤压的发生点。
+- agent 运行的会话就是普通持久会话（与 `dsh-headless` 同形），运行结束后仍然可以打开回放。运行结束的瞬间若正开着该会话，视图会退回工作区，点该运行行即可重新打开落盘记录（id 不在列表里时客户端会先重拉一次宿主会话列表）。更早版本落盘的运行会话头部仍带 `origin: "subagent"`，依旧打不开。
 
 ## Web overlay
 

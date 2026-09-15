@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { renderCronFraming, renderCronPrompt, summarize } from "../lib/executor.js";
+import { renderCronFraming, renderCronPrompt, runSessionMeta, summarize } from "../lib/executor.js";
 
 const job = (name, prompt = "do the thing") => ({ name, task: { prompt } });
 const ISO = "2026-08-26T12:07:19.272Z";
@@ -23,6 +23,13 @@ test("renderCronFraming: breaks {{ pairs in user-input job names", () => {
 test("renderCronPrompt: fallback appends the job prompt after a blank line", () => {
 	const text = renderCronPrompt(job("t1"), ISO);
 	assert.equal(text, `${renderCronFraming(job("t1"), ISO)}\n\ndo the thing`);
+});
+
+test("runSessionMeta: the run Session stays plain, so the harness keeps it addressable", () => {
+	const meta = runSessionMeta("C:\\jobs\\daily");
+	assert.deepEqual(meta, { cwd: "C:\\jobs\\daily" });
+	assert.equal(Object.hasOwn(meta, "origin"), false, "an origin tag would make the run unopenable");
+	assert.equal(runSessionMeta("").cwd, process.cwd());
 });
 
 const EVENTS = [
