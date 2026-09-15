@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CronService, normalizeJobs, runKey } from "../lib/service.js";
+import { isCronSessionDirName } from "../lib/gc.js";
+import { CronService, cronSessionSlug, newCronSessionId, normalizeJobs, runKey } from "../lib/service.js";
 
 /** In-memory stand-in for one storage-domain table. */
 function stubTable() {
@@ -489,4 +490,22 @@ test("a callback job without a handler is refused rather than scheduled dead", a
 	const outcome = await service.attachPluginJob(CALLBACK_SPEC, "pkg");
 	assert.equal(outcome.code, "invalid_job");
 	assert.equal(service.jobs.length, 0);
+});
+
+const UUID_RE = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+
+test("cron session ids are path-safe for any job name and still pass the gc naming filter", () => {
+	assert.equal(cronSessionSlug("daily-log-review"), "daily-log-review");
+	const zh = cronSessionSlug("市场-复盘");
+	assert.match(zh, /^job-[0-9a-f]{8}$/);
+	assert.equal(zh, cronSessionSlug("市场-复盘"), "stable per name");
+	assert.notEqual(zh, cronSessionSlug("个股-决策"));
+	assert.match(cronSessionSlug("看板-A股流动性"), /^A-[0-9a-f]{8}$/);
+	assert.match(cronSessionSlug("-lead"), /^lead-[0-9a-f]{8}$/);
+	for (const name of ["market", "市场-复盘", "看板-A股流动性", "a b"]) {
+		const id = newCronSessionId(name);
+		assert.match(id, /^[A-Za-z0-9_-]+$/, `${id} must be path-safe`);
+		assert.match(id, new RegExp(`^cron-.+-${UUID_RE}$`));
+		assert.equal(isCronSessionDirName(id), true, id);
+	}
 });
