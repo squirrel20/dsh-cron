@@ -181,6 +181,8 @@ The `runs` table keeps the most recent `historyLimit` entries keyed by `<job>#<s
 - Plugin-registered jobs (`source: "plugin"`) are owned by their provider package: they can be run, paused and inspected, but not edited or deleted from the overlay or a session — that is what installing and uninstalling the provider is for. Unmounting a provider leaves an orphan row holding the job's history until the user deletes it.
 - `queue` depth is 1: only the single latest squeezed-out occurrence is kept.
 - A run's Session is a plain durable Session (the `dsh-headless` shape), so its conversation stays openable after the run settles. A conversation that is on screen at that exact moment returns to the workspace, and the run row reopens the persisted transcript (the client re-pulls the host session list once when the id is no longer listed). Run Sessions persisted by earlier versions still carry the `origin: "subagent"` header and stay unopenable.
+- Because a run's Session is plain, the host no longer refuses prompts to it: opening a run while it is still going and typing into it adds a user turn to the unattended run (that turn can surface in the run's summary), and the run's settle then returns that conversation to the workspace.
+- Run Sessions are no longer hidden from the workspace sidebar (it hides only `origin: "subagent"` Sessions), so every run — live or settled — is listed there; a high-frequency job accumulates entries, and a settled run can be resumed from the sidebar without the `[CRON RUN]` framing.
 
 ## Web overlay
 
