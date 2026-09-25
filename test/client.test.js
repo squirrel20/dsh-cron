@@ -22,7 +22,7 @@ const reactDomStub = { createPortal: (node) => node };
 const primitivesStub = new Proxy({}, { get: () => () => null });
 
 /** Load `lib/client.js` through its ModuleLoader entry and return its exports. */
-function loadClientModule() {
+function loadClientModule(primitives = primitivesStub) {
 	const source = readFileSync(new URL("../lib/client.js", import.meta.url), "utf8");
 	let entry;
 	const windowStub = {
@@ -38,7 +38,7 @@ function loadClientModule() {
 	const requireStub = (id) => {
 		if (id === "react") return reactStub;
 		if (id === "react-dom") return reactDomStub;
-		if (id === "@deepseek-ai/dsh-client-ui-primitives") return primitivesStub;
+		if (id === "@deepseek-ai/dsh-client-ui-primitives") return primitives;
 		throw new Error(`unexpected module request: ${id}`);
 	};
 	new Function("window", source)(windowStub);
@@ -144,4 +144,57 @@ test("cron client: an unreachable host list still reports false", async () => {
 	} finally {
 		console.warn = originalWarn;
 	}
+});
+
+/** The icons the section renders, with the size suffix dsh <= 0.1.5 exported them under. */
+const ICONS = {
+	PlusOutline: "16",
+	TrashOutline: "16",
+	EllipsisOutline: "16",
+	EditOutline: "16",
+	PauseOutline: "16",
+	PlayOutline: "16",
+	SearchOutline: "16",
+	CloseOutline: "16",
+	PersonalizationOutline: "16",
+	StopFill: "16",
+	TriangleRightFill: "14",
+};
+
+/** A primitives stub exporting only `exported` icon names; records every Icon* lookup. */
+function iconPrimitives(exported) {
+	const lookups = [];
+	const target = {};
+	for (const name of exported) target[name] = () => null;
+	const primitives = new Proxy(target, {
+		get(object, key) {
+			if (typeof key === "string" && key.startsWith("Icon")) {
+				lookups.push(key);
+				return object[key];
+			}
+			return () => null;
+		},
+	});
+	return { primitives, lookups };
+}
+
+test("cron client: icons render through the resolver, never a bare primitives member (#5)", () => {
+	const source = readFileSync(new URL("../lib/client.js", import.meta.url), "utf8");
+	assert.doesNotMatch(source, /primitives\.Icon/);
+});
+
+test("cron client: dsh 0.1.7 Regular icon names are preferred and legacy names never consulted (#5)", () => {
+	const { primitives, lookups } = iconPrimitives(Object.keys(ICONS).map((stem) => `Icon${stem}Regular`));
+	loadClientModule(primitives);
+	for (const stem of Object.keys(ICONS)) {
+		assert.ok(lookups.includes(`Icon${stem}Regular`), stem);
+		assert.ok(!lookups.includes(`Icon${stem}${ICONS[stem]}`), stem);
+	}
+});
+
+test("cron client: dsh 0.1.5 legacy icon names are the fallback, and loading survives neither (#5)", () => {
+	const legacy = iconPrimitives(Object.entries(ICONS).map(([stem, size]) => `Icon${stem}${size}`));
+	loadClientModule(legacy.primitives);
+	for (const [stem, size] of Object.entries(ICONS)) assert.ok(legacy.lookups.includes(`Icon${stem}${size}`), stem);
+	assert.doesNotThrow(() => loadClientModule(iconPrimitives([]).primitives));
 });
