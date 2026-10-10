@@ -198,3 +198,44 @@ test("cron client: dsh 0.1.5 legacy icon names are the fallback, and loading sur
 	for (const [stem, size] of Object.entries(ICONS)) assert.ok(legacy.lookups.includes(`Icon${stem}${size}`), stem);
 	assert.doesNotThrow(() => loadClientModule(iconPrimitives([]).primitives));
 });
+
+test("web controls require password entry, keep token in memory, and clear rejected tokens", async () => {
+	const source = readFileSync(new URL("../lib/client.js", import.meta.url), "utf8");
+	const start = source.indexOf('\t\tlet operatorToken = "";');
+	const end = source.indexOf('\t\t//#endregion', start);
+	let prompts = 0;
+	const answers = ["first-token", "replacement-token", ""];
+	const requests = [];
+	const document = {
+		createElement(tag) {
+			const element = { children: [], append(...children) { this.children.push(...children); }, focus() {}, remove() {}, addEventListener(_name, fn) { this.onClose = fn; } };
+			if (tag === "dialog") element.showModal = () => {
+				prompts++;
+				const input = element.children[0].children[0].children[0];
+				assert.equal(input.type, "password");
+				assert.equal(input.autocomplete, "off");
+				input.value = answers.shift();
+				element.returnValue = input.value ? "confirm" : "";
+				element.onClose();
+			};
+			return element;
+		},
+		body: { append() {} },
+	};
+	const statuses = [200, 403, 403];
+	const fetch = async (_url, options) => {
+		requests.push(options);
+		const status = statuses.shift();
+		return { ok: status === 200, status, json: async () => ({}) };
+	};
+	const postAction = new Function("document", "fetch", "location", source.slice(start, end) + "\nreturn postAction;")(document, fetch, { origin: "http://localhost" });
+	assert.equal((await postAction("/create", {})).ok, true);
+	assert.equal((await postAction("/create", {})).ok, false);
+	assert.equal(prompts, 1, "successful token reused only in memory");
+	await postAction("/create", {});
+	assert.equal(prompts, 2, "403 requires a new token");
+	await postAction("/create", {});
+	assert.equal(requests.length, 3, "cancellation sends no request");
+	assert.equal(requests[0].headers.authorization, "Bearer first-token");
+	assert.equal(requests[2].headers.authorization, "Bearer replacement-token");
+});

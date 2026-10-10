@@ -83,6 +83,17 @@ Job misconfiguration (duplicate names, invalid expressions, missing time zone, �
 
 The same block takes an optional `maxConcurrentRuns`: **`0` (the default) means unbounded** — unrelated jobs have no reason to queue behind each other, and a job's own overlap is already governed by `policy.overlap`. Set a positive number only to deliberately cap host-wide load; `1` serializes every job, so jobs due at the same minute run one after another.
 
+## Security and upgrading
+
+Cron jobs are **host administration**, not sandboxed extensions of the creating session. Mutating conversation tools require the session's effective sandbox to be `danger-full-access` and approval policy to be `never`. Preset names alone do not grant access; Auto, custom/unresolved permissions, and missing permission services fail closed. Read tools remain available. Restricted sessions should produce a proposed spec for operator review instead of creating or triggering jobs. This release deliberately does not offer confined-session cron execution.
+
+- Existing manual jobs without a matching authorization record are retained with history, but quarantined (`requiresApproval: true`). Review the complete task, access, cwd and delivery command, then **Edit → Save** to authorize that exact spec. Enable and Run now cannot bypass quarantine. New/edited manual jobs store an authorization digest and creator session ID when available; dispatch and delivery recheck the stored authorization. This is standing authorization, independent of the creator session's lifetime. Pause/delete the job to revoke future runs; stop any active run separately.
+- Web writes require `Authorization: Bearer <webControlToken>`. Set the plugin's `webControlToken` to a random secret of at least 32 characters; unset/short tokens disable web writes. Generate it with `openssl rand -hex 32` and store it in protected host configuration, outside any agent-readable workspace. The UI asks for it in a password dialog, keeps it only in memory, and clears it after a 403. Never supply it to a restricted agent. Use HTTPS when connecting remotely. Neither read endpoints nor job specs expose the token.
+- Config-declared and plugin-registered jobs remain trusted host declarations. Commands and delivery still execute on the host, now with an explicit environment allowlist: `PATH`, `HOME`, `USER`, `LOGNAME`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TZ`, `TMPDIR`, `TMP`, `TEMP`, `SystemRoot`, `WINDIR`. To pass an additional variable, the operator must list its **name** in plugin config `commandEnv: [MY_SERVICE_TOKEN]`. This explicitly grants that variable to all host command/delivery jobs; model-controlled specs cannot extend the list. Environment filtering is not process confinement.
+- An explicit agent access preset must apply successfully or the run fails before prompt submission. Missing services and invalid presets no longer silently fall back to host defaults.
+
+These are intentional compatibility changes addressing [issue #6](https://github.com/squirrel20/dsh-cron/issues/6). Protect the host configuration, cron storage and other host-admin interfaces as part of the same trust boundary.
+
 ## Usage
 
 ### Adding a job by hand
@@ -100,7 +111,7 @@ Click **`+`** in the sidebar's **Cron Jobs** section header. The New job dialog 
 
 ### Adding a job from a session
 
-Just ask the agent in any session:
+In an explicitly unrestricted session with approval disabled, ask the agent:
 
 > Every Monday at 07:00 review our outdated dependencies and save an upgrade checklist to reports/deps-audit.md.
 

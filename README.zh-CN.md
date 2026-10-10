@@ -80,6 +80,17 @@ profile 的 `package.json`：
 
 同层还有一个可选的 `maxConcurrentRuns`：**默认 `0` = 不限并发**，互不相干的作业没理由互相排队（作业自身的重叠另由 `policy.overlap` 管）。只有当你确实要给宿主压上一个全局上限时才设正数——设 `1` 意味着全部作业串行，撞点的那批会依次等前一个跑完。
 
+## 安全边界与升级
+
+Cron 是**宿主管理能力**，不会自动继承创建会话的沙箱。会话中的写操作仅允许有效 sandbox 为 `danger-full-access` 且 approval 为 `never` 的调用者；按实际权限校验，不按预设名称放行。Auto、自定义未解析状态、权限服务缺失均拒绝。读取工具保留；受限会话只能提供待管理员审核的任务规格。本版不提供受限会话内的隔离调度。
+
+- **存量 manual 作业需重新审核**：缺少匹配授权记录的作业保留历史，但停止派发并显示“待审核”（`requiresApproval: true`）。完整检查 task、access、cwd 和 delivery 后，在界面编辑并保存，才会授权该规格。启用或立即运行不会绕过审核。授权记录绑定规格摘要，并记录会话创建者；派发及通知前重新校验。这是持续授权，不依赖原会话是否存活；暂停/删除可撤销后续调度，已运行的任务需另行停止。
+- **网页写接口需要管理员令牌**：插件配置 `webControlToken` 必须是至少 32 字符的随机秘密，可用 `openssl rand -hex 32` 生成，保存在受保护的宿主配置中，不得放在 agent 可读的工作区。未配置或过短时禁止网页写入。界面使用密码框输入令牌，只保存在当前页面内存中，403 后清除；不要将令牌提供给受限 agent。远程访问使用 HTTPS。API 使用 `Authorization: Bearer <webControlToken>`；读取接口及任务规格不包含令牌。
+- **config/plugin 作业仍属可信宿主声明**。command 与 delivery 仍在宿主执行，但只继承明确的基础环境变量白名单：`PATH`、`HOME`、`USER`、`LOGNAME`、`LANG`、`LC_ALL`、`LC_CTYPE`、`TZ`、`TMPDIR`、`TMP`、`TEMP`、`SystemRoot`、`WINDIR`。需要额外变量时，由管理员在插件配置中填写变量名，例如 `commandEnv: [MY_SERVICE_TOKEN]`；这会向所有宿主 command/delivery 作业授权该变量，模型提供的任务规格无法扩大名单。环境变量过滤不等于进程隔离。
+- agent 指定的 access 无法应用时直接失败，不再静默回退到宿主默认权限。
+
+以上是修复 [issue #6](https://github.com/squirrel20/dsh-cron/issues/6) 所需的兼容性变更。宿主配置、cron 存储及其他管理接口都必须受到同一信任边界的保护。
+
 ## 使用
 
 ### 手工添加作业
@@ -97,7 +108,7 @@ profile 的 `package.json`：
 
 ### 会话内添加作业
 
-在任意会话里直接对 agent 说需求即可：
+在已明确开启完整访问、无需审批的会话里，可以对 agent 说：
 
 > 每周一早上 7 点检查过期依赖，把升级清单存到 reports/deps-audit.md。
 

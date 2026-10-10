@@ -35,7 +35,7 @@ const GC_OFF = { enabled: false, root: "/nonexistent", graceMs: 60_000 };
 
 function makeService(rawJobs) {
 	const jobs = normalizeJobs(rawJobs);
-	const service = new CronService(ctx, { historyLimit: 5, maxConcurrentRuns: 1 }, jobs, GC_OFF);
+	const service = new CronService(ctx, { historyLimit: 5, maxConcurrentRuns: 1, webControlToken: "test-operator-token-at-least-32-chars" }, jobs, GC_OFF);
 	service.domain = stubDomain();
 	const now = Date.now();
 	for (const job of jobs) {
@@ -141,7 +141,7 @@ function stubRequest(body, contentType = "application/json") {
 	const listeners = {};
 	return {
 		method: "POST",
-		headers: { "content-type": contentType },
+		headers: { "content-type": contentType, authorization: "Bearer test-operator-token-at-least-32-chars" },
 		on(event, fn) {
 			listeners[event] = fn;
 			if (event === "end") {
@@ -211,4 +211,26 @@ test("action handler refuses non-POST and malformed bodies", async () => {
 	const resArr = stubResponse();
 	await handler(stubRequest("[1,2]"), resArr);
 	assert.equal(resArr.record.status, 400);
+});
+
+test("HTTP actions reject missing, wrong, short and unconfigured operator tokens", async () => {
+	const service = makeService([]);
+	let calls = 0;
+	const handler = createActionHandler(() => service, silentLogger, () => { calls++; return {}; });
+	for (const token of [undefined, "Bearer wrong", "Bearer test-operator-token-at-least-32-charX"]) {
+		const req = stubRequest("{}");
+		req.headers.authorization = token;
+		const res = stubResponse();
+		await handler(req, res);
+		assert.equal(res.record.status, 403);
+	}
+	for (const token of ["", "short"]) {
+		service.webControlToken = token;
+		const req = stubRequest("{}");
+		req.headers.authorization = `Bearer ${token}`;
+		const res = stubResponse();
+		await handler(req, res);
+		assert.equal(res.record.status, 403);
+	}
+	assert.equal(calls, 0);
 });
